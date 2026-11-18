@@ -6,6 +6,10 @@
   <title>Tiempo por delante</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="style.css">
+  <script>
+    // aplica el tema guardado antes de pintar, para evitar parpadeos
+    try { const th = localStorage.getItem('tiempo-por-delante-tema'); if (th) document.documentElement.dataset.theme = th; } catch (_) {}
+  </script>
 </head>
 <body>
   <header class="top">
@@ -22,6 +26,13 @@
         <h1>Tiempo por delante</h1>
         <p class="sub">Cuánta vida te queda, y cuánta de ella es realmente tuya.</p>
       </div>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn primary" id="shareBtn">Compartir</button>
+      <button type="button" class="btn" id="exportBtn">Exportar</button>
+      <button type="button" class="btn" id="importBtn">Importar</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+      <button type="button" class="btn icon" id="themeBtn" aria-label="Cambiar a modo oscuro" title="Cambiar a modo oscuro"></button>
     </div>
   </header>
 
@@ -53,6 +64,9 @@
           </label>
           <label>Edad de jubilación
             <input type="number" id="retire" min="0" max="130" step="1">
+          </label>
+          <label>En plena forma hasta (años) <small>(después, menos energía)</small>
+            <input type="number" id="health" min="0" max="130" step="1">
           </label>
         </div>
       </div>
@@ -113,19 +127,31 @@
       </div>
 
       <div class="card">
+        <h2>Tu tiempo libre según la etapa</h2>
+        <p class="hint">No es lo mismo una hora libre a los 30 que a los 75.</p>
+        <div class="phase-vs" id="phaseVs"></div>
+        <div class="stack tall" id="phaseBar"></div>
+        <div class="table-wrap" id="phaseTable"></div>
+        <h3>Cuándo harás lo que quieres hacer</h3>
+        <div id="phaseActs" class="phase-acts"></div>
+        <p class="note" id="phaseNote"></p>
+      </div>
+
+      <div class="card">
         <h2>¿En qué se va ese tiempo?</h2>
         <div class="stack" id="stack"></div>
         <ul class="legend" id="legend"></ul>
         <p class="note" id="freeNote"></p>
       </div>
+    </section>
 
-      <div class="card">
-        <h2>Lo que quieres hacer, dentro de tu tiempo libre</h2>
-        <p class="hint" id="actHint"></p>
-        <div class="stack tall" id="actStack"></div>
-        <ul class="legend" id="actLegend"></ul>
-        <div id="actResults" class="act-results"></div>
-      </div>
+    <!-- ============ PLANES (ancho completo) ============ -->
+    <section class="card plans">
+      <h2>Lo que quieres hacer, dentro de tu tiempo libre</h2>
+      <p class="hint" id="actHint"></p>
+      <div class="stack tall" id="actStack"></div>
+      <ul class="legend" id="actLegend"></ul>
+      <div id="actResults" class="act-results"></div>
     </section>
 
     <!-- ============ VIDA EN SEMANAS ============ -->
@@ -166,6 +192,7 @@
   </template>
 
   <div id="tip" class="tip" role="tooltip" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <script src="app.js"></script>
 </body>
 </html>

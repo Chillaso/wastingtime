@@ -9,6 +9,7 @@ const DEFAULTS = {
   birth: '',
   lifeExp: 83,
   retire: 67,
+  health: 72,
   workDays: [true, true, true, true, true, false, false],
   workHours: 9,
   sleep: 7.5,
@@ -58,8 +59,13 @@ function assignSlots(list) {
 const slotColor = (it) => (it.slot >= 0 && it.slot < 8 ? `--s${it.slot + 1}` : '--muted');
 
 function migrate(st) {
-  st.commits = (st.commits || []).map(normItem);
-  st.acts = assignSlots((st.acts || []).map(normItem));
+  // por si viene de un enlace o archivo ajeno: tipos esperados
+  const arr = (x) => (Array.isArray(x) ? x.filter((it) => it && typeof it === 'object') : []);
+  if (!Array.isArray(st.workDays) || st.workDays.length !== 7) st.workDays = [...DEFAULTS.workDays];
+  st.workDays = st.workDays.map(Boolean);
+  st.commits = arr(st.commits).map(normItem);
+  st.acts = assignSlots(arr(st.acts).map(normItem));
+  st.commits.concat(st.acts).forEach((it) => { it.name = String(it.name ?? ''); it.days = it.days.map(Boolean); });
   return st;
 }
 
@@ -122,9 +128,11 @@ function compute() {
   const sleepW = num(state.sleep) * 7;
   const basicsW = num(state.basics) * 7;
   const workHours = num(state.workHours);
+  const health = num(state.health, lifeExp);
 
   const t = {
-    age, lifeExp, retire,
+    age, lifeExp, retire, health,
+    phases: new Map(),
     weeks: 0, sleep: 0, basics: 0, work: 0, commit: 0, free: 0,
     workFreeDays: 0, workingWeeks: 0, workDaysCount: workDaysN,
     acts: state.acts.map(() => ({ count: 0, hours: 0 })),
@@ -171,11 +179,18 @@ function compute() {
     y.fixed += (sleepW + basicsW) * w;
     t.years.set(yk, y);
 
+    // etapa: antes/después de jubilarte y con/sin plena forma
+    const pk = `${a >= retire ? 'ret' : 'work'}-${a < health ? 'fit' : 'low'}`;
+    let ph = t.phases.get(pk);
+    if (!ph) { ph = { key: pk, from: a, to: a, weeks: 0, free: 0, acts: state.acts.map(() => 0) }; t.phases.set(pk, ph); }
+    ph.to = a + step * w; ph.weeks += w; ph.free += free * w;
+
     state.acts.forEach((ac, j) => {
       if (activeAt(ac, a)) {
         const c = perWeek(ac) * w;
         t.acts[j].count += c;
         t.acts[j].hours += c * num(ac.hours);
+        ph.acts[j] += c;
       }
     });
   }
@@ -231,6 +246,7 @@ function render() {
   $('freeNote').textContent = note;
 
   renderVs(t);
+  renderPhases(t);
   renderAgeChart(t);
   renderActs(t);
   drawGrid(t);
@@ -270,6 +286,76 @@ function renderVs(t) {
   if (before) parts.push(`Hasta jubilarte: ${fmt(before.ob, 1)} h/semana de obligaciones frente a ${fmt(before.fr, 1)} h libres.`);
   if (after) parts.push(`Después: ${fmt(after.ob, 1)} h de obligaciones y ${fmt(after.fr, 1)} h libres por semana.`);
   $('vsNote').textContent = parts.join(' ');
+}
+
+/* ---------- tiempo libre por etapas ---------- */
+const PHASES = {
+  'work-fit': { label: 'Trabajando, en plena forma', short: 'Trabajando', c: '--c-work' },
+  'work-low': { label: 'Trabajando, con menos energía', short: 'Trabajando (menos energía)', c: '--c-work-low' },
+  'ret-fit': { label: 'Jubilado, en plena forma', short: 'Jubilado en forma', c: '--c-free' },
+  'ret-low': { label: 'Jubilado, con menos energía', short: 'Jubilado (menos energía)', c: '--c-low' },
+};
+
+function renderPhases(t) {
+  const phases = [...t.phases.values()].filter((p) => p.weeks > 0.5);
+  if (!phases.length) {
+    $('phaseVs').innerHTML = ''; $('phaseBar').innerHTML = ''; $('phaseTable').innerHTML = '';
+    $('phaseActs').innerHTML = ''; $('phaseNote').textContent = 'No quedan años que mostrar.';
+    return;
+  }
+  const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
+  const totalFree = sum(phases, (p) => p.free) || 1;
+  const yrs = (p) => p.weeks / WEEKS_PER_YEAR;
+
+  // antes / después de jubilarte
+  const side = (pred, title) => {
+    const ps = phases.filter(pred);
+    const wk = sum(ps, (p) => p.weeks), fr = sum(ps, (p) => p.free);
+    if (!wk) return `<div class="side"><span class="side-t">${title}</span><b>—</b><span>sin años en esta etapa</span></div>`;
+    return `<div class="side"><span class="side-t">${title}</span><b>${fmt(fr / 24)}</b>
+      <span>días libres en ${fmt(wk / WEEKS_PER_YEAR, 1)} años</span>
+      <span class="per">${fmt(fr / wk, 1)} h libres/semana · ${fmt((fr / totalFree) * 100)} % del total</span></div>`;
+  };
+  $('phaseVs').innerHTML =
+    side((p) => p.key.startsWith('work'), `Antes de jubilarte <small>(hasta los ${fmt(t.retire)})</small>`) +
+    side((p) => p.key.startsWith('ret'), `Después de jubilarte`);
+
+  // barra de tiempo libre por etapa (en orden cronológico)
+  $('phaseBar').innerHTML = phases.map((p) => {
+    const ph = PHASES[p.key];
+    return `<div style="flex-grow:${p.free};background:var(${ph.c})" data-tip="<b>${ph.label}</b><br>De los ${fmt(p.from)} a los ${fmt(p.to)} años<br>${fmt(p.free / 24)} días libres · ${fmt((p.free / totalFree) * 100, 1)} % del total"></div>`;
+  }).join('');
+
+  $('phaseTable').innerHTML = `<table>
+    <thead><tr><th>Etapa</th><th>Edades</th><th>Días libres</th><th>h/sem</th><th>% total</th></tr></thead>
+    <tbody>${phases.map((p) => {
+      const ph = PHASES[p.key];
+      return `<tr><td><i style="background:var(${ph.c})"></i>${ph.label}</td>
+        <td>${fmt(p.from)}–${fmt(p.to)} <small>(${fmt(yrs(p), 1)} años)</small></td>
+        <td>${fmt(p.free / 24)}</td><td>${fmt(p.free / p.weeks, 1)}</td>
+        <td>${fmt((p.free / totalFree) * 100, 1)} %</td></tr>`;
+    }).join('')}</tbody></table>`;
+
+  // cada actividad repartida por etapa
+  const acts = state.acts.map((ac, j) => ({ ac, j, total: sum(phases, (p) => p.acts[j]) }))
+    .filter(({ ac, total }) => (ac.name || num(ac.times)) && total > 0);
+  $('phaseActs').innerHTML = acts.length ? acts.map(({ ac, j, total }) => {
+    const parts = phases.filter((p) => p.acts[j] >= 0.5);
+    const segs = parts.map((p) => {
+      const ph = PHASES[p.key];
+      return `<div style="flex-grow:${p.acts[j]};background:var(${ph.c})" data-tip="<b>${esc(esc(ac.name || 'Sin nombre'))}</b><br>${ph.label}: ${fmt(Math.floor(p.acts[j]))} veces"></div>`;
+    }).join('');
+    const txt = parts.map((p) => `${fmt(Math.floor(p.acts[j]))} ${PHASES[p.key].short.toLowerCase()}`).join(' · ');
+    return `<div class="pa"><div class="pa-name"><span class="sw" style="background:var(${slotColor(ac)})"></span>${esc(ac.name || 'Sin nombre')} <em>${fmt(Math.floor(total))} veces</em></div>
+      <div class="stack thin">${segs}</div><div class="pa-txt">${txt}</div></div>`;
+  }).join('') : '<p class="empty">Añade cosas que quieras hacer para ver en qué etapa caen.</p>';
+
+  // conclusión
+  const after = sum(phases.filter((p) => p.key.startsWith('ret')), (p) => p.free);
+  const low = sum(phases.filter((p) => p.key.endsWith('low')), (p) => p.free);
+  const parts = [`El ${fmt((after / totalFree) * 100)} % de tu tiempo libre llegará después de jubilarte`];
+  if (low > 0) parts.push(`y el ${fmt((low / totalFree) * 100)} % cuando ya tengas menos energía (a partir de los ${fmt(t.health)})`);
+  $('phaseNote').textContent = parts.join(' ') + '. Lo que exija forma física, mejor no dejarlo para entonces.';
 }
 
 /* ---------- gráfico por edad ---------- */
@@ -486,7 +572,7 @@ function drawGrid(t) {
 }
 
 /* ---------- formulario ---------- */
-const SIMPLE = ['age', 'birth', 'lifeExp', 'retire', 'workHours', 'sleep', 'basics', 'vacation'];
+const SIMPLE = ['age', 'birth', 'lifeExp', 'retire', 'health', 'workHours', 'sleep', 'basics', 'vacation'];
 
 function bindForm() {
   SIMPLE.forEach((k) => {
@@ -654,7 +740,132 @@ $('reset').addEventListener('click', () => {
 
 let resizeT;
 window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(render, 120); });
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', render);
+/* ---------- modo claro / oscuro ---------- */
+const THEME_KEY = 'tiempo-por-delante-tema';
+const darkMQ = window.matchMedia('(prefers-color-scheme: dark)');
+const ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const ICON_MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>';
+
+const isDark = () => (document.documentElement.dataset.theme || (darkMQ.matches ? 'dark' : 'light')) === 'dark';
+function syncThemeBtn() {
+  const dark = isDark();
+  const btn = $('themeBtn');
+  btn.innerHTML = dark ? ICON_SUN : ICON_MOON;          // muestra a qué modo cambiarás
+  const label = dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro';
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
+$('themeBtn').addEventListener('click', () => {
+  const next = isDark() ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem(THEME_KEY, next); } catch (_) {}
+  syncThemeBtn();
+  render(); // la cuadrícula en canvas lee los colores al dibujar
+});
+darkMQ.addEventListener?.('change', () => { syncThemeBtn(); render(); });
+syncThemeBtn();
+
+/* ---------- compartir / exportar / importar ---------- */
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => { el.hidden = true; }, 2600);
+}
+
+// Codifica la configuración en el fragmento (#) del enlace: no se envía a ningún servidor
+const encodeState = (st) => btoa(unescape(encodeURIComponent(JSON.stringify(st))))
+  .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const decodeState = (str) =>
+  JSON.parse(decodeURIComponent(escape(atob(str.replace(/-/g, '+').replace(/_/g, '/')))));
+
+function applyConfig(cfg) {
+  if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('formato no válido');
+  state = migrate({ ...structuredClone(DEFAULTS), ...cfg });
+  bindForm();
+  update();
+}
+
+$('shareBtn').addEventListener('click', async () => {
+  const url = `${location.origin}${location.pathname}#d=${encodeState(state)}`;
+  if (navigator.share) {
+    try { await navigator.share({ title: 'Tiempo por delante', text: 'Mira cuánto tiempo libre me queda', url }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('Enlace copiado. Quien lo abra verá tu misma configuración.');
+  } catch (_) {
+    window.prompt('Copia este enlace para compartir tu configuración:', url);
+  }
+});
+
+$('exportBtn').addEventListener('click', () => {
+  const t = compute();
+  const data = {
+    app: 'tiempo-por-delante',
+    version: 1,
+    exportado: new Date().toISOString(),
+    config: state,
+    resumen: {
+      diasPorDelante: Math.round(t.weeks * 7),
+      diasLibresReales: Math.round(t.free / 24),
+      diasTrabajo: Math.round(t.work / 24),
+      diasCompromisos: Math.round(t.commit / 24),
+      etapas: [...t.phases.values()].map((p) => ({
+        etapa: PHASES[p.key].label, desde: +p.from.toFixed(1), hasta: +p.to.toFixed(1),
+        diasLibres: Math.round(p.free / 24),
+      })),
+      actividades: state.acts.map((ac, j) => ({
+        nombre: ac.name, vecesRestantes: Math.floor(t.acts[j].count), horas: Math.round(t.acts[j].hours),
+      })),
+    },
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `tiempo-por-delante-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast('Datos exportados');
+});
+
+$('importBtn').addEventListener('click', () => $('importFile').click());
+$('importFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    applyConfig(data.config ?? data);
+    toast('Configuración importada');
+  } catch (_) {
+    toast('No se pudo importar: el archivo no es una configuración válida');
+  }
+});
+
+// Abrir un enlace compartido
+function loadFromHash() {
+  const m = location.hash.match(/^#d=([\w-]+)$/);
+  if (!m) return;
+  try {
+    const cfg = decodeState(m[1]);
+    let hasOwn = false;
+    try { hasOwn = !!localStorage.getItem(STORE_KEY); } catch (_) {}
+    if (!hasOwn || confirm('Este enlace trae una configuración compartida. ¿Cargarla? Sustituirá la tuya.')) {
+      applyConfig(cfg);
+      toast('Configuración compartida cargada');
+    }
+  } catch (_) {
+    toast('El enlace compartido no es válido');
+  }
+  history.replaceState(null, '', location.pathname + location.search);
+}
 
 bindForm();
 render();
+loadFromHash();
+window.addEventListener('hashchange', loadFromHash);
