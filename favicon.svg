@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#d0603a"/>
+  <!-- reloj de arena -->
+  <path d="M20 12h24M20 52h24" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+  <path d="M23 13c0 10 9 13 9 19s-9 9-9 19M41 13c0 10-9 13-9 19s9 9 9 19"
+        fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- arena: poca arriba, mucha abajo -->
+  <path d="M28 24h8c-1.2 2.6-4 4-4 6.5 0-2.5-2.8-3.9-4-6.5z" fill="#fff"/>
+  <path d="M25.5 50c1-6 6.5-7.5 6.5-11 0 3.5 5.5 5 6.5 11z" fill="#fff"/>
+</svg>

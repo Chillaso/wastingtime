@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tiempo por delante</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="var(--accent)"/>
+        <path d="M20 12h24M20 52h24" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+        <path d="M23 13c0 10 9 13 9 19s-9 9-9 19M41 13c0 10-9 13-9 19s9 9 9 19"
+              fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M28 24h8c-1.2 2.6-4 4-4 6.5 0-2.5-2.8-3.9-4-6.5z" fill="#fff"/>
+        <path d="M25.5 50c1-6 6.5-7.5 6.5-11 0 3.5 5.5 5 6.5 11z" fill="#fff"/>
+      </svg>
+      <div>
+        <h1>Tiempo por delante</h1>
+        <p class="sub">Cuánta vida te queda, y cuánta de ella es realmente tuya.</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- ============ RESUMEN ============ -->
+    <section class="summary">
+      <div class="card hero">
+        <div class="hero-num" id="daysLeft">—</div>
+        <div class="hero-lbl">días por delante</div>
+        <div class="progress"><div id="lifeBar"></div></div>
+        <div class="hero-foot" id="lifePct"></div>
+      </div>
+      <div class="stats" id="stats"></div>
+    </section>
+
+    <!-- ============ CONFIGURACIÓN ============ -->
+    <section class="config">
+      <div class="card">
+        <h2>Tú</h2>
+        <div class="grid2">
+          <label>Edad actual (años)
+            <input type="number" id="age" min="0" max="120" step="0.1">
+          </label>
+          <label>o fecha de nacimiento
+            <input type="date" id="birth">
+          </label>
+          <label>Esperanza de vida (años)
+            <input type="number" id="lifeExp" min="1" max="130" step="0.5">
+          </label>
+          <label>Edad de jubilación
+            <input type="number" id="retire" min="0" max="130" step="1">
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Semana tipo</h2>
+        <div class="field">
+          <span class="lbl">Días que trabajas</span>
+          <div class="days" id="workDays"></div>
+        </div>
+        <div class="grid2">
+          <label>Horas de trabajo por día laborable <small>(incluye desplazamientos)</small>
+            <input type="number" id="workHours" min="0" max="24" step="0.5">
+          </label>
+          <label>Horas de sueño al día
+            <input type="number" id="sleep" min="0" max="24" step="0.5">
+          </label>
+          <label>Tareas básicas al día <small>(comer, casa, higiene…)</small>
+            <input type="number" id="basics" min="0" max="24" step="0.5">
+          </label>
+          <label>Vacaciones + festivos al año <small>(días laborables libres)</small>
+            <input type="number" id="vacation" min="0" max="365" step="1">
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Compromisos</h2>
+          <button class="ghost" id="addCommit">+ Añadir</button>
+        </div>
+        <p class="hint">Cosas que te comen horas durante una etapa: cuidar a un hijo 4 h al día, a un familiar, estudiar… Restan de tu tiempo libre.</p>
+        <div id="commits" class="rows"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Cosas que quieres hacer</h2>
+          <button class="ghost" id="addAct">+ Añadir</button>
+        </div>
+        <p class="hint">Ej.: subir una montaña 2 veces al año, en fin de semana, hasta los 72. Se reparten dentro de tu tiempo libre.</p>
+        <div id="acts" class="rows"></div>
+      </div>
+
+      <button class="ghost small" id="reset">Restablecer valores de ejemplo</button>
+    </section>
+
+    <!-- ============ RESULTADOS ============ -->
+    <section class="results">
+      <div class="card">
+        <h2>Obligaciones frente a tiempo libre</h2>
+        <div class="vs" id="vs"></div>
+        <div class="vs-bars" id="vsBars"></div>
+        <p class="note" id="vsNote"></p>
+        <h3>Horas por semana según tu edad</h3>
+        <div id="ageChart" class="age-chart"></div>
+        <ul class="legend" id="ageLegend"></ul>
+      </div>
+
+      <div class="card">
+        <h2>¿En qué se va ese tiempo?</h2>
+        <div class="stack" id="stack"></div>
+        <ul class="legend" id="legend"></ul>
+        <p class="note" id="freeNote"></p>
+      </div>
+
+      <div class="card">
+        <h2>Lo que quieres hacer, dentro de tu tiempo libre</h2>
+        <p class="hint" id="actHint"></p>
+        <div class="stack tall" id="actStack"></div>
+        <ul class="legend" id="actLegend"></ul>
+        <div id="actResults" class="act-results"></div>
+      </div>
+    </section>
+
+    <!-- ============ VIDA EN SEMANAS ============ -->
+    <section class="card life">
+      <h2>Tu vida en semanas</h2>
+      <p class="hint">Cada columna es un año de tu vida; cada punto, una semana.</p>
+      <canvas id="grid"></canvas>
+      <ul class="legend" id="gridLegend"></ul>
+    </section>
+  </main>
+
+  <template id="itemTpl">
+    <div class="row">
+      <div class="row-top">
+        <span class="handle" title="Arrastra para reordenar" aria-hidden="true">⠿</span>
+        <span class="row-sw" aria-hidden="true"></span>
+        <input class="name" type="text" placeholder="Nombre" data-k="name">
+        <button type="button" class="mv up" title="Subir" aria-label="Subir">↑</button>
+        <button type="button" class="mv down" title="Bajar" aria-label="Bajar">↓</button>
+        <button type="button" class="del" title="Eliminar" aria-label="Eliminar">×</button>
+      </div>
+      <div class="row-fields">
+        <label>veces<input type="number" min="0" step="0.5" data-k="times"></label>
+        <label>cada
+          <select data-k="per">
+            <option value="day">día marcado</option>
+            <option value="week">semana</option>
+            <option value="month">mes</option>
+            <option value="year">año</option>
+          </select>
+        </label>
+        <label>horas/vez<input type="number" min="0" max="24" step="0.5" data-k="hours"></label>
+        <label>desde edad<input type="number" min="0" max="130" step="1" data-k="from" placeholder="ahora"></label>
+        <label>hasta edad<input type="number" min="0" max="130" step="1" data-k="to" placeholder="siempre"></label>
+      </div>
+      <div class="row-days days small" aria-label="Días de la semana"></div>
+    </div>
+  </template>
+
+  <div id="tip" class="tip" role="tooltip" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
